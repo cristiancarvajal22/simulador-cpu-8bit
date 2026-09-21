@@ -4,9 +4,18 @@
 ~$*.xlsb
 ~$*.xls
 
-# Windows files
+# Python & build scripts
+*.py
+__pycache__/
+*.pyc
+
+# Editor & OS files
+.vscode/
+.idea/
 Thumbs.db
 Desktop.ini
+.DS_Store
 
-# VS Code
-.vscode/
+# Temporary & Log files
+*.tmp
+*.log
