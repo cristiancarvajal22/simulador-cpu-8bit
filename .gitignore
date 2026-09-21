@@ -1,0 +1,12 @@
+# Excel temporary lock files
+~$*.xlsx
+~$*.xlsm
+~$*.xlsb
+~$*.xls
+
+# Windows files
+Thumbs.db
+Desktop.ini
+
+# VS Code
+.vscode/
