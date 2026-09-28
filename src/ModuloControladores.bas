@@ -7,6 +7,7 @@ Option Explicit
 
 ' Boton: Paso a Paso (STEP)
 Public Sub btn_Step()
+    If EnEjecucion Then Exit Sub
     Call ModuloCiclo.PasoCiclo
 End Sub
 

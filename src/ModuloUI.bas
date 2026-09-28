@@ -245,10 +245,16 @@ Public Function ObtenerRetardoMs() As Long
     Set ws = ThisWorkbook.Sheets(HOJA_SIMULADOR)
     Dim v As Variant
     v = ws.Range("V18").Value
-    If IsNumeric(v) And v > 0 Then
-        ObtenerRetardoMs = CLng(v)
+    ObtenerRetardoMs = 250
+    If IsError(v) Then Exit Function
+    If Not IsNumeric(v) Then Exit Function
+    If CDbl(v) <= 0 Then Exit Function
+    If CDbl(v) < 20 Then
+        ObtenerRetardoMs = 20
+    ElseIf CDbl(v) > 10000 Then
+        ObtenerRetardoMs = 10000
     Else
-        ObtenerRetardoMs = 250
+        ObtenerRetardoMs = CLng(v)
     End If
 End Function
 

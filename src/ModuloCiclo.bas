@@ -12,6 +12,9 @@ Option Explicit
     Private Declare Sub Sleep Lib "kernel32" (ByVal dwMilliseconds As Long)
 #End If
 
+' Permanece ocupado hasta que sale el bucle, incluso si RESET cambia EnEjecucion.
+Private RelojOcupado As Boolean
+
 ' Ejecutar un unico paso del ciclo de reloj (Avanza una fase)
 Public Sub PasoCiclo()
     If CpuDetenida Then
@@ -386,23 +389,33 @@ End Sub
 ' Control de Ejecucion Continua (RUN / PAUSE)
 ' ------------------------------------------------------------------------------
 Public Sub EjecutarContinuo()
+    If RelojOcupado Then Exit Sub
     If CpuDetenida Then
         Call ModuloUI.AgregarLog("ESTADO", "La CPU esta detenida. Reinicie antes de ejecutar.")
         Exit Sub
     End If
     
+    On Error GoTo ErrorReloj
+    RelojOcupado = True
     EnEjecucion = True
     Call ModuloUI.AgregarLog("CONTROL", "Iniciando ejecucion continua...")
     
     Dim retardoMs As Long
-    retardoMs = ModuloUI.ObtenerRetardoMs()
-    If retardoMs < 20 Then retardoMs = 20
+    Dim intervalo As Long
     
     Do While EnEjecucion And Not CpuDetenida
         Call PasoCiclo
-        DoEvents
-        Sleep retardoMs
+        retardoMs = ModuloUI.ObtenerRetardoMs()
+        Do While retardoMs > 0 And EnEjecucion And Not CpuDetenida
+            intervalo = 20
+            If retardoMs < intervalo Then intervalo = retardoMs
+            Sleep intervalo
+            DoEvents
+            retardoMs = retardoMs - intervalo
+        Loop
     Loop
+    EnEjecucion = False
+    RelojOcupado = False
     
     If CpuDetenida And IR = &HFF Then
         Call ModuloUI.AgregarLog("CONTROL", "Ejecucion terminada exitosamente por instruccion HLT.")
@@ -411,6 +424,12 @@ Public Sub EjecutarContinuo()
     Else
         Call ModuloUI.AgregarLog("CONTROL", "Ejecucion pausada por el usuario.")
     End If
+    Exit Sub
+ErrorReloj:
+    EnEjecucion = False
+    RelojOcupado = False
+    CpuDetenida = True
+    Call ModuloUI.AgregarLog("ERROR", "Reloj detenido: " & Err.Description & ". Presione RESET.")
 End Sub
 
 Public Sub PausarEjecucion()
