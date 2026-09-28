@@ -17,11 +17,11 @@ Simulador interactivo y visual del ciclo completo de instrucción (**Fetch, Deco
 
 ### 1. Registros de CPU
 * **PC (Program Counter):** 8 bits. Apunta a la siguiente instrucción a ejecutar en memoria.
-* **IR (Instruction Register):** 8 bits. Contiene el código de operación (Opcode) y operandos de la instrucción en curso.
+* **IR (Instruction Register):** 8 bits. Conserva el opcode. Los operandos se guardan por separado en `OperandoDato` o `DireccionEfectiva`, y `MnemonicActual` identifica la operación.
 * **MAR (Memory Address Register):** 8 bits. Conectado al bus de direcciones de la memoria RAM.
 * **MDR / MBR (Memory Data / Buffer Register):** 8 bits. Almacena el dato leído o por escribir en la RAM.
 * **AX / AC (Acumulador):** 8 bits. Registro de propósito general para operaciones aritmético-lógicas.
-* **BX:** 8 bits. Registro de propósito general y direccionamiento.
+* **BX:** 8 bits. Registro de propósito general.
 * **Banderas de Estado (Flags - 1 bit c/u):**
   * **ZF (Zero Flag):** Activo (1) si el resultado de la ALU es 0.
   * **CF (Carry Flag):** Activo (1) si hubo desbordamiento sin signo.
@@ -31,7 +31,7 @@ Simulador interactivo y visual del ciclo completo de instrucción (**Fetch, Deco
 * **Tamaño:** 256 posiciones continuas de 8 bits (`00h` a `FFh`).
 * **Organización visual:** Matriz 16×16 con visualización Hexadecimal, Binario y Decimal.
 * **Segmentación:** Segmento de Código (instrucciones) y Segmento de Datos (variables y almacenamiento).
-* **Primitivas:** `Read(address)` y `Write(address, value)`.
+* **Primitivas:** `ReadRAM(address)` y `WriteRAM(address, value)` en `ModuloMemoria.bas`.
 
 ---
 
@@ -73,32 +73,48 @@ graph TD
 
 ---
 
-## 📋 Conjunto de Instrucciones (ISA Ensamblador)
+## Conjunto de instrucciones (ISA)
 
-| Mnemónico | Sintaxis | Opcode (Hex) | Bytes | Descripción |
-|---|---|---|---|---|
-| `MOV` | `MOV reg, imm` | `01h` | 2 | Carga valor inmediato en registro |
-| `MOV` | `MOV reg, reg` | `02h` | 2 | Copia valor entre registros |
-| `LOAD` | `LOAD reg, [dir]` | `03h` | 2 | Lee de dirección RAM a registro |
-| `STORE` | `STORE [dir], reg` | `04h` | 2 | Escribe de registro a dirección RAM |
-| `ADD` | `ADD reg, imm` / `reg` | `10h` / `11h` | 2 | Suma y actualiza flags (ZF, CF, SF) |
-| `SUB` | `SUB reg, imm` / `reg` | `12h` / `13h` | 2 | Resta y actualiza flags (ZF, CF, SF) |
-| `INC` | `INC reg` | `14h` | 2 | Incrementa registro en 1 |
-| `DEC` | `DEC reg` | `15h` | 2 | Decrementa registro en 1 |
-| `CMP` | `CMP reg, imm` / `reg` | `16h` / `17h` | 2 | Compara actualizando flags sin guardar resultado |
-| `AND` | `AND reg, imm` / `reg` | `20h` / `21h` | 2 | Operación AND a nivel de bits |
-| `OR` | `OR reg, imm` / `reg` | `22h` / `23h` | 2 | Operación OR a nivel de bits |
-| `XOR` | `XOR reg, imm` / `reg` | `24h` / `25h` | 2 | Operación XOR a nivel de bits |
-| `NOT` | `NOT reg` | `26h` | 2 | Inversión de bits (NOT) |
-| `JMP` | `JMP dir` | `30h` | 2 | Salto incondicional a dirección |
-| `JZ` | `JZ dir` | `31h` | 2 | Salto si Zero Flag (ZF = 1) |
-| `JNZ` | `JNZ dir` | `32h` | 2 | Salto si no Zero Flag (ZF = 0) |
-| `HLT` | `HLT` | `FFh` | 1 | Detiene la ejecución del procesador |
+La siguiente tabla describe el decodificador actual de `src/ModuloCiclo.bas`. Los opcodes son propios del simulador educativo; no son la codificación binaria de un procesador x86 real. `imm` y `dir` ocupan un byte (00h–FFh) después del opcode. En las operaciones entre registros, los registros están determinados por el opcode.
+
+| Opcode | Instrucción | Bytes | Descripción |
+|---|---|---|---|
+| `01h` | `MOV AX, imm` | 2 | Carga el inmediato en AX |
+| `02h` | `MOV BX, imm` | 2 | Carga el inmediato en BX |
+| `03h` | `MOV AX, BX` | 1 | Copia BX en AX |
+| `04h` | `MOV BX, AX` | 1 | Copia AX en BX |
+| `05h` | `LOAD AX, [dir]` | 2 | Lee RAM[dir] hacia AX |
+| `06h` | `LOAD BX, [dir]` | 2 | Lee RAM[dir] hacia BX |
+| `07h` | `STORE [dir], AX` | 2 | Escribe AX en RAM[dir] |
+| `08h` | `STORE [dir], BX` | 2 | Escribe BX en RAM[dir] |
+| `10h` | `ADD AX, imm` | 2 | Suma el inmediato a AX y actualiza banderas |
+| `11h` | `ADD AX, BX` | 1 | Suma BX a AX y actualiza banderas |
+| `12h` | `SUB AX, imm` | 2 | Resta el inmediato de AX y actualiza banderas |
+| `13h` | `SUB AX, BX` | 1 | Resta BX de AX y actualiza banderas |
+| `14h` | `INC AX` | 1 | Incrementa AX |
+| `15h` | `INC BX` | 1 | Incrementa BX |
+| `16h` | `DEC AX` | 1 | Decrementa AX |
+| `17h` | `DEC BX` | 1 | Decrementa BX |
+| `18h` | `CMP AX, imm` | 2 | Compara AX con inmediato sin escribir AX |
+| `19h` | `CMP AX, BX` | 1 | Compara AX con BX sin escribir los registros |
+| `20h` | `AND AX, imm` | 2 | AND entre AX e inmediato |
+| `21h` | `AND AX, BX` | 1 | AND entre AX y BX |
+| `22h` | `OR AX, imm` | 2 | OR entre AX e inmediato |
+| `23h` | `OR AX, BX` | 1 | OR entre AX y BX |
+| `24h` | `XOR AX, imm` | 2 | XOR entre AX e inmediato |
+| `25h` | `XOR AX, BX` | 1 | XOR entre AX y BX |
+| `26h` | `NOT AX` | 1 | Invierte los ocho bits de AX |
+| `30h` | `JMP dir` | 2 | Salta a dir |
+| `31h` | `JZ dir` | 2 | Salta a dir si ZF=1 |
+| `32h` | `JNZ dir` | 2 | Salta a dir si ZF=0 |
+| `FFh` | `HLT` | 1 | Detiene la ejecución |
+
+Las variantes aritméticas con BX como destino, fuera de INC y DEC, no están implementadas en el decodificador actual. La cobertura del repertorio requerido se revisa en #5; las pruebas de banderas se siguen en #11.
 
 ---
 
 ## 🕹️ Modos de Ejecución
-1. **Paso a Paso (Step):** Ejecución micro-operación por micro-operación con resaltado visual del componente activo.
+1. **Paso a Paso (Step):** Avanza una fase del ciclo por pulsación; cada fase agrupa sus microoperaciones y resalta los componentes correspondientes.
 2. **Continuo (Run / Play):** Ejecución automática con velocidad o retardo ajustable.
 3. **Reset:** Reinicio total de registros y Program Counter a cero.
 4. **Log de Micro-operaciones:** Registro cronológico de eventos en tiempo real.
