@@ -272,7 +272,9 @@ Private Sub FaseDecode()
             
         Case Else
             MnemonicActual = "UNKNOWN (" & ByteToHex(IR) & ")"
-            Call ModuloUI.AgregarLog("DECODE", "Opcode no reconocido: " & ByteToHex(IR))
+            CpuDetenida = True
+            EnEjecucion = False
+            Call ModuloUI.AgregarLog("ERROR", "Opcode no reconocido: " & ByteToHex(IR) & ". CPU detenida; presione RESET.")
             Exit Sub
     End Select
     
@@ -402,8 +404,10 @@ Public Sub EjecutarContinuo()
         Sleep retardoMs
     Loop
     
-    If CpuDetenida Then
+    If CpuDetenida And IR = &HFF Then
         Call ModuloUI.AgregarLog("CONTROL", "Ejecucion terminada exitosamente por instruccion HLT.")
+    ElseIf CpuDetenida Then
+        Call ModuloUI.AgregarLog("CONTROL", "Ejecucion detenida por error de instruccion.")
     Else
         Call ModuloUI.AgregarLog("CONTROL", "Ejecucion pausada por el usuario.")
     End If
