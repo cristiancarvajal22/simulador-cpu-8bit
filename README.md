@@ -102,3 +102,16 @@ graph TD
 2. **Continuo (Run / Play):** Ejecución automática con velocidad o retardo ajustable.
 3. **Reset:** Reinicio total de registros y Program Counter a cero.
 4. **Log de Micro-operaciones:** Registro cronológico de eventos en tiempo real.
+
+
+## Gestión del proyecto
+
+[Tablero Kanban del Parcial 1](https://github.com/users/cristiancarvajal22/projects/4)
+
+- **Backlog:** tarea pendiente de iniciar o verificar.
+- **Active:** trabajo en curso, con un alcance concreto.
+- **Done:** criterios de aceptación comprobados y evidencia registrada en la issue.
+
+Los commits se organizan por cambios concretos, con mensajes `feat:`, `fix:`, `docs:` o `refactor:` y referencias a la tarea relacionada. Las pruebas se registran antes de cerrar una tarea.
+
+El repositorio contiene una implementación inicial; la validación del libro en Excel, las correcciones pendientes y la documentación de uso se siguen en las issues abiertas.
