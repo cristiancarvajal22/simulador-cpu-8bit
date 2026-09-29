@@ -11,6 +11,8 @@ const C = {fondo:'#808080',uc:'#D8EDF3',alu:'#ECF1DC',mem:'#FFEAD4',valor:'#C65A
 
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('Simulador CPU')
+    .addItem('Elegir operación y datos','elegirOperacion').addItem('Cargar operación elegida','cargarOperacion')
+    .addItem('Cargar demo: multiplicación','cargarDemo').addSeparator()
     .addItem('PASO · una microoperación','paso').addItem('EJECUTAR','ejecutar')
     .addItem('PAUSAR','pausar').addItem('RESET · conservar RAM','reiniciar')
     .addItem('CARGAR · bytes de Programa','cargarPrograma').addSeparator()
@@ -71,6 +73,11 @@ function escribirMemoria(){conBloqueo_(props=>{
 
 function pintar_(s,e,clearLog){
   const book=SpreadsheetApp.getActive(),sh=book.getSheetByName('Diagrama');
+  if(e) {
+    sh.getRange('B30:R33').setValue(e.label);
+    sh.getRange('B50:AX51').setValue('EN TRANSFERENCIA · '+e.from+' → '+e.to+'     '+Cpu.hex(e.value)+'h = '+e.value+' decimal = '+e.value.toString(2).padStart(8,'0'));
+    [e.from,e.to].filter(k=>REGIONES[k]).forEach(k=>sh.getRange(REGIONES[k]).setBackground(C.activo).setFontColor('#17212B'));
+  }
   if(e && e.before) animarTransferencia_(sh,e);
   Object.keys(s.r).forEach(k=>sh.getRange(REGIONES[k]).setValue(Cpu.hex(s.r[k])+'h').setBackground(C.valor).setFontColor('#FFFFFF'));
   ['DEC','SEQ','CLOCK'].forEach(k=>sh.getRange(REGIONES[k]).setBackground(C.uc).setFontColor('#17212B'));
@@ -78,6 +85,7 @@ function pintar_(s,e,clearLog){
   sh.getRange(REGIONES.FLAGS).setValue('ZF '+s.flags.ZF+'   CF '+s.flags.CF+'   SF '+s.flags.SF);
   sh.getRange(REGIONES.DEC).setValue(s.instruction.split(' ')[0]);sh.getRange(REGIONES.SEQ).setValue(s.steps+'\n'+s.phase);
   sh.getRange(REGIONES.CLOCK).setValue(s.halted?'■':s.steps%2?'●':'○');sh.getRange(REGIONES.ALU).setValue(Cpu.ISA[s.r.IR]?Cpu.ISA[s.r.IR].op:'');
+  sh.getRange('B25:AX26').setValue('Entradas ALU: REN1 = '+s.r.REN1+'   REN2 = '+s.r.REN2+'       AC = '+s.r.AC+'   (valores decimales)');
   sh.getRange('V38:AB40').setValue(Cpu.hex(s.r.MAR)+'h');
   sh.getRange('B27:R28').setValue(s.error?'ERROR':s.halted?'DETENIDO · HLT':s.phase);
   sh.getRange('B30:R33').setValue(s.error||(e?e.label:'Pulsa PASO para comenzar.'));
@@ -92,6 +100,7 @@ function pintar_(s,e,clearLog){
     sh.getRange(39+i,35,1,9).setValue(Cpu.hex(s.ram[start+i])+'h    ('+s.ram[start+i]+')').setBackground(start+i===s.r.MAR?C.activo:C.mem);
   }
   const mem=book.getSheetByName('Memoria');
+  mem.getRange('U6:X15').setValues(Object.entries(s.r).map(([k,v])=>[k,Cpu.hex(v),v,v.toString(2).padStart(8,'0')]));
   mem.getRange('C6:R21').setNumberFormat('@').setValues(Array.from({length:16},(_,r)=>s.ram.slice(r*16,r*16+16).map(Cpu.hex)));
   mem.getRange('C6:R21').setBackgrounds(Array.from({length:16},(_,r)=>Array.from({length:16},(_,c)=>r*16+c===s.r.MAR?C.activo:r<8?C.uc:C.alu)));
   const log=book.getSheetByName('Registro');
@@ -109,28 +118,75 @@ function mostrarTransferencia(){SpreadsheetApp.getActive().toast('El indicador r
 function animarTransferencia_(sh,e){
   const token=sh.getDrawings().find(d=>d.getOnAction()==='mostrarTransferencia');
   if(!token)return;
-  const paths={
-    'PC:MAR':[[430,352],[430,448],[390,448],[390,520],[420,520]],
-    'OP:MAR':[[350,352],[350,520],[420,520]],
-    'RAM:MDR':[[860,650],[900,650],[900,544]],
-    'MDR:RAM':[[900,544],[900,650],[860,650]],
-    'MDR:IR':[[900,520],[990,520],[990,400],[480,400],[480,264],[460,264]],
-    'AC:MDR':[[580,168],[520,168],[520,432],[810,432],[810,496]],
-    'ALU:AC':[[820,168],[770,168],[720,168]]
-  };
-  const path=paths[e.from+':'+e.to];
-  // Las operaciones internas sin bus dibujado se indican resaltando sus registros.
-  if(!path)return;
+  function center(k){
+    if(k==='RAM')return [770,(38+e.address-Math.min(248,Math.max(0,e.address-3))+0.5)*16];
+    if(k==='ONE'||k==='ZERO')return [770,384];
+    if(!REGIONES[k])return null;
+    const r=sh.getRange(REGIONES[k]);
+    return [(r.getColumn()-1+r.getNumColumns()/2)*20,(r.getRow()-1+r.getNumRows()/2)*16];
+  }
+  const a=center(e.from),b=center(e.to);
+  if(!a||!b)return;
+  // Los registros internos también tienen recorrido: no dependen de flechas decorativas.
+  const path=[a,[(a[0]+b[0])/2,(a[1]+b[1])/2],b];
   for(const point of path){
     const p=[point[0]-7,point[1]-7];
     token.setPosition(Math.floor(p[1]/16)+1,Math.floor(p[0]/20)+1,Math.round(p[0]%20),Math.round(p[1]%16));
-    SpreadsheetApp.flush();Utilities.sleep(100);
+    SpreadsheetApp.flush();Utilities.sleep(140);
   }
+}
+
+function actualizarVista(){
+  const sh=SpreadsheetApp.getActive().getSheetByName('Diagrama');
+  // Únicamente se retira el dibujo decorativo de buses; se conservan ALU y controles.
+  sh.getDrawings().filter(d=>d.getOnAction()==='mostrarBuses').forEach(d=>d.remove());
+  sh.getRange('B4:AL5').clearContent();
+  sh.getRange('B25:AX26').breakApart().merge().setBackground(C.fondo).setFontColor('#FFFFFF').setFontSize(12).setWrap(true);
+  conBloqueo_(props=>{props.deleteProperty(RUN_KEY);pintar_(sesion_(props),null,false);});
+}
+
+function elegirOperacion(){SpreadsheetApp.getActive().getSheetByName('Operación').activate();}
+function cargarOperacion(){
+  conBloqueo_(props=>{
+    const book=SpreadsheetApp.getActive(),sh=book.getSheetByName('Operación');
+    const code=Cpu.parseHex(sh.getRange('C5').getDisplayValue().split(' · ')[0]);
+    const values=sh.getRange('C7:C9').getValues().flat().map(v=>Cpu.byte(Number(v)));
+    instalarPrograma_(props,Ejemplos.crear(code,...values));
+    book.getSheetByName('Diagrama').activate();
+  });
+}
+function cargarDemo(){conBloqueo_(props=>{
+  instalarPrograma_(props,{ram:Cpu.demo(),notas:{128:'Multiplicando: 5',129:'Contador: 3',130:'Resultado'}});
+  SpreadsheetApp.getActive().getSheetByName('Diagrama').activate();
+});}
+function instalarPrograma_(props,programa){
+  const book=SpreadsheetApp.getActive();
+  book.getSheetByName('Programa').getRange('B7:C262').setNumberFormat('@').setValues(programa.ram.map((v,i)=>[Cpu.hex(v),programa.notas[i]||'']));
+  const s=Cpu.create(programa.ram);props.deleteProperty(RUN_KEY);pintar_(s,null,true);props.setProperty(STATE_KEY,JSON.stringify(s));
+}
+function prepararControles(){
+  const book=SpreadsheetApp.getActive();book.setSpreadsheetTimeZone('America/La_Paz');
+  const sh=book.getSheetByName('Operación')||book.insertSheet('Operación');
+  sh.setHiddenGridlines(true).setColumnWidths(1,1,22).setColumnWidths(2,1,220).setColumnWidths(3,1,245).setColumnWidths(4,3,100);
+  sh.getRange('A1:F23').setFontFamily('Arial').setFontSize(12).setBackground('#F3F6FA').setVerticalAlignment('middle');sh.setRowHeights(1,23,30);
+  function title(r,t){sh.getRange(r).merge().setValue(t).setWrap(true);}
+  title('B2:F3','ELIGE UNA INSTRUCCIÓN · DATOS DE 8 BITS');sh.getRange('B2:F3').setBackground('#16324F').setFontColor('#FFFFFF').setFontSize(18);
+  sh.getRange('B5').setValue('Instrucción');sh.getRange('C5:F5').merge().setValue('11 · ADD AX,BX');
+  sh.getRange('C5').setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(Object.values(Cpu.ISA).map(d=>Cpu.hex(d.code)+' · '+d.mnemonic),true).setAllowInvalid(false).build());
+  sh.getRange('B7:C9').setValues([['Dato A (RAM 80h → AX)',5],['Dato B (RAM 81h → BX)',3],['Inmediato (si dice imm)',3]]);
+  sh.getRange('C7:C9').setNumberFormat('0').setBackground('#FFF0C2').setDataValidation(SpreadsheetApp.newDataValidation().requireNumberBetween(0,255).setAllowInvalid(false).build());
+  title('B11:F12','1. Elige una instrucción y escribe enteros de 0 a 255.\n2. Menú Simulador CPU → Cargar operación elegida.\n3. Usa PASO o EJECUTAR en el diagrama.');
+  title('B14:F16','ADD suma; SUB resta; AND/OR/XOR operan bit a bit. CMP compara sin modificar AX/BX. INC, DEC y NOT necesitan un solo dato. REN1 y REN2 son las entradas internas de la ALU; AC recoge su resultado.');
+  title('B18:F20','El programa lee primero A y B desde RAM. En las variantes imm, el segundo operando es el inmediato. Al terminar, AX queda también en RAM[82h] y BX en RAM[83h]. LOAD usa 80h; STORE escribe en 84h.');
+  title('B22:F23','JMP/JZ/JNZ incluyen CMP AX,BX y un salto de prueba: si no se toma, AX recibe EEh. HLT se detiene sin almacenamiento final. Para un bucle: menú → Cargar demo: multiplicación.');
+  const mem=book.getSheetByName('Memoria');mem.getRange('U5:X5').setValues([['Registro','HEX','DEC','BIN']]).setFontWeight('bold');mem.getRange('V6:V15').setNumberFormat('@');mem.getRange('X6:X15').setNumberFormat('@');mem.setColumnWidths(21,3,75).setColumnWidth(24,105);
+  onOpen();conBloqueo_(props=>{props.deleteProperty(RUN_KEY);pintar_(sesion_(props),null,false);});
+  sh.activate();
 }
 
 function instalarFiguraNueva(){
   const sh=SpreadsheetApp.getActive().getSheetByName('Diagrama');
-  const specs=[['mostrarALU',10,41,160,128],['mostrarBuses',11,7,870,536],['mostrarTransferencia',10,3,14,14],
+  const specs=[['mostrarALU',10,41,160,128],['mostrarTransferencia',10,3,14,14],
     ['paso',4,2,105,30],['ejecutar',4,8,115,30],['pausar',4,15,105,30],['reiniciar',4,21,105,30],['cargarPrograma',4,27,115,30]];
   const drawings=sh.getDrawings(),pending=drawings.filter(d=>!d.getOnAction());
   if(pending.length!==1)throw Error('Debe existir exactamente una figura nueva sin función asignada.');
@@ -149,7 +205,7 @@ function prepararDiagrama(){
   function text(range,value,size,color){sh.getRange(range).merge().setValue(value).setFontSize(size||10).setFontColor(color||'#17212B').setWrap(true);}
   function box(range,color){sh.getRange(range).setBackground(color).setBorder(true,true,true,true,false,false,'#111111',SpreadsheetApp.BorderStyle.SOLID_MEDIUM);}
   text('B1:AX2','SIMULADOR CPU · CICLO DE INSTRUCCIÓN',16,'#FFFFFF');
-  text('B4:AL5','PASO     EJECUTAR     PAUSAR     RESET     CARGAR',11,'#FFFFFF');
+  text('B4:AL5','',11,'#FFFFFF');text('B25:AX26','Entradas ALU',12,'#FFFFFF');
   text('AN3:AX3','Pausa entre pasos (100–2000 ms)',9,'#FFFFFF');text('AQ4:AX5',500,11);
   sh.getRange('AQ4:AX5').setBackground('#FFFFFF').setDataValidation(SpreadsheetApp.newDataValidation().requireNumberBetween(100,2000).setAllowInvalid(false).build());
   box('B7:X24',C.uc);box('AB7:AX24',C.alu);box('T29:AT48',C.mem);
