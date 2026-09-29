@@ -15,3 +15,20 @@ for(const d of Object.values(C.ISA)){s=make(d.size===2?[d.code,5,255,0,0,255]:[d
 s=make([1,255,16,1,255]);let event;while(!s.halted){const e=C.step(s);if(e.from==='ALU')event=e;}assert.equal(event.value,0);assert.equal(event.before.r.AX,255);
 assert.throws(()=>C.parseHex('100'));assert.throws(()=>C.read(s,256));assert.throws(()=>C.write(s,0,-1));assert.equal(C.parseHex('ff'),255);
 console.log('PASS: 196608 casos ALU; '+Object.keys(C.ISA).length+' opcodes; microoperaciones, saltos, RAM, wrap, HLT y 5 casos demo.');
+vm.runInNewContext(fs.readFileSync('src/Ejemplos.gs','utf8'),ctx);
+for(const d of Object.values(C.ISA)) {
+  for(const [a,b,imm] of [[5,3,7],[0,0,0],[255,255,255]]) {
+    const program=ctx.Ejemplos.crear(d.code,a,b,imm);
+    s=finish(C.create(program.ram));
+    if(d.op!=='HLT'){assert.equal(s.ram[130],s.r.AX);assert.equal(s.ram[131],s.r.BX);}
+    if(['ADD','SUB','INC','DEC','AND','OR','XOR','NOT','CMP'].includes(d.op)){
+      const lhs=d.dst==='AX'?a:b,rhs=d.src==='imm'?imm:d.src==='AX'?a:b;
+      const expected=C.alu(d.op,lhs,rhs);
+      assert.equal(s.r[d.dst],d.op==='CMP'?lhs:expected.result,d.mnemonic);
+      assert.deepEqual(s.flags,expected.flags);
+    }
+    if(['JMP','JZ','JNZ'].includes(d.op))assert.equal(s.r.AX,(d.op==='JMP'||d.op==='JZ'&&a===b||d.op==='JNZ'&&a!==b)?a:238);
+    if(d.op==='STORE')assert.equal(s.ram[132],d.src==='AX'?a:b);
+  }
+}
+console.log('PASS: 126 programas del selector con resultados, banderas y bifurcaciones comprobados.');
