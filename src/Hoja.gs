@@ -5,7 +5,7 @@ const REGIONES = {
   PC:'U20:W22', IR:'Q16:W18', OP:'Q20:S22', MAR:'V32:AD34',
   MDR:'AK32:AS34', AX:'AD21:AF23', BX:'AH21:AJ23', AC:'AD10:AJ12',
   REN1:'AP20:AS22', REN2:'AU20:AX22', FLAGS:'AD16:AJ18',
-  DEC:'Q10:W12', SEQ:'I10:N15', CLOCK:'C10:F12', ALU:'AS12:AU14'
+  DEC:'Q10:W12', SEQ:'I10:N15', CLOCK:'C10:F12', ALU:'AQ12:AU14'
 };
 const C = {fondo:'#808080',uc:'#D8EDF3',alu:'#ECF1DC',mem:'#FFEAD4',valor:'#C65A49',activo:'#FFD166'};
 
@@ -73,7 +73,9 @@ function escribirMemoria(){conBloqueo_(props=>{
 
 function pintar_(s,e,clearLog){
   const book=SpreadsheetApp.getActive(),sh=book.getSheetByName('Diagrama');
+  if(!e){const token=sh.getDrawings().find(d=>d.getOnAction()==='mostrarTransferencia');if(token)token.setPosition(20,21,2,2);}
   if(e) {
+    sh.getRange('B27:R28').setValue(e.phase);
     sh.getRange('B30:R33').setValue(e.label);
     sh.getRange('B50:AX51').setValue('EN TRANSFERENCIA · '+e.from+' → '+e.to+'     '+Cpu.hex(e.value)+'h = '+e.value+' decimal = '+e.value.toString(2).padStart(8,'0'));
     [e.from,e.to].filter(k=>REGIONES[k]).forEach(k=>sh.getRange(REGIONES[k]).setBackground(C.activo).setFontColor('#17212B'));
@@ -84,7 +86,10 @@ function pintar_(s,e,clearLog){
   ['FLAGS','ALU'].forEach(k=>sh.getRange(REGIONES[k]).setBackground(C.alu).setFontColor('#17212B'));
   sh.getRange(REGIONES.FLAGS).setValue('ZF '+s.flags.ZF+'   CF '+s.flags.CF+'   SF '+s.flags.SF);
   sh.getRange(REGIONES.DEC).setValue(s.instruction.split(' ')[0]);sh.getRange(REGIONES.SEQ).setValue(s.steps+'\n'+s.phase);
-  sh.getRange(REGIONES.CLOCK).setValue(s.halted?'■':s.steps%2?'●':'○');sh.getRange(REGIONES.ALU).setValue(Cpu.ISA[s.r.IR]?Cpu.ISA[s.r.IR].op:'');
+  sh.getRange(REGIONES.CLOCK).setValue(s.halted?'■':s.steps%2?'●':'○');
+  const op=Cpu.ISA[s.r.IR]&&Cpu.ISA[s.r.IR].op;
+  const operacionALU=['ADD','SUB','INC','DEC','AND','OR','XOR','NOT','CMP'].includes(op);
+  sh.getRange(REGIONES.ALU).setValue(operacionALU?op+'\n'+s.r.REN1+(op==='NOT'?'':' , '+s.r.REN2)+'\nAC = '+s.r.AC:'Sin cálculo').setFontSize(9);
   sh.getRange('B25:AX26').setValue('Entradas ALU: REN1 = '+s.r.REN1+'   REN2 = '+s.r.REN2+'       AC = '+s.r.AC+'   (valores decimales)');
   sh.getRange('V38:AB40').setValue(Cpu.hex(s.r.MAR)+'h');
   sh.getRange('B27:R28').setValue(s.error?'ERROR':s.halted?'DETENIDO · HLT':s.phase);
@@ -115,24 +120,40 @@ function mostrarALU(){SpreadsheetApp.getActive().toast('La ALU opera con REN1 y 
 function mostrarBuses(){SpreadsheetApp.getActive().toast('Las flechas muestran la dirección de transferencia de datos y direcciones.');}
 function mostrarTransferencia(){SpreadsheetApp.getActive().toast('El indicador recorre la conexión de la microoperación actual.');}
 
+function transferenciasVisuales_(e){
+  if(e.from!=='ALU')return [e];
+  const op=Cpu.ISA[e.before.r.IR].op;
+  const routes=[{from:'REN1',to:'ALU',value:e.before.r.REN1,label:'Entrada 1 de '+op+' llega a la ALU'}];
+  if(op!=='NOT')routes.push({from:'REN2',to:'ALU',value:e.before.r.REN2,label:'Entrada 2 de '+op+' llega a la ALU'});
+  routes.push(e);return routes;
+}
 function animarTransferencia_(sh,e){
   const token=sh.getDrawings().find(d=>d.getOnAction()==='mostrarTransferencia');
   if(!token)return;
   function center(k){
-    if(k==='RAM')return [770,(38+e.address-Math.min(248,Math.max(0,e.address-3))+0.5)*16];
-    if(k==='ONE'||k==='ZERO')return [770,384];
+    if(k==='RAM')return [860,(38+e.address-Math.min(248,Math.max(0,e.address-3))+0.5)*16];
+    if(k==='ONE'||k==='ZERO')return [890,368];
     if(!REGIONES[k])return null;
     const r=sh.getRange(REGIONES[k]);
-    return [(r.getColumn()-1+r.getNumColumns()/2)*20,(r.getRow()-1+r.getNumRows()/2)*16];
+    // El indicador toca el borde del registro, sin tapar su contenido numérico.
+    return [(r.getColumn()-1)*20,(r.getRow()-1+r.getNumRows()/2)*16];
   }
-  const a=center(e.from),b=center(e.to);
-  if(!a||!b)return;
-  // Los registros internos también tienen recorrido: no dependen de flechas decorativas.
-  const path=[a,[(a[0]+b[0])/2,(a[1]+b[1])/2],b];
-  for(const point of path){
-    const p=[point[0]-7,point[1]-7];
-    token.setPosition(Math.floor(p[1]/16)+1,Math.floor(p[0]/20)+1,Math.round(p[0]%20),Math.round(p[1]%16));
-    SpreadsheetApp.flush();Utilities.sleep(140);
+  for(const transfer of transferenciasVisuales_(e)){
+    const a=center(transfer.from),b=center(transfer.to);
+    if(!a||!b)continue;
+    sh.getRange('B30:R33').setValue(transfer.label);
+    sh.getRange('B50:AX51').setValue('EN TRANSFERENCIA · '+transfer.from+' → '+transfer.to+'     '+Cpu.hex(transfer.value)+'h = '+transfer.value+' decimal');
+    if(transfer.from==='ONE'||transfer.from==='ZERO')sh.getRange('AN23:AX24').setValue('Constante interna: '+transfer.value);
+    if(transfer.to==='ALU')sh.getRange(REGIONES.ALU).setBackground(C.activo).setValue(Cpu.ISA[e.before.r.IR].op+'\nEntrada: '+transfer.value);
+    // Origen, recorrido y llegada. El destino conserva su dato previo hasta la llegada.
+    const path=[a,[(a[0]+b[0])/2,(a[1]+b[1])/2],b];
+    for(const point of path){
+      const p=[point[0]-10,point[1]-10];
+      token.setPosition(Math.floor(p[1]/16)+1,Math.floor(p[0]/20)+1,Math.round(p[0]%20),Math.round(p[1]%16));
+      SpreadsheetApp.flush();Utilities.sleep(180);
+    }
+    if(transfer.from==='ALU')sh.getRange(REGIONES.ALU).setValue(Cpu.ISA[e.before.r.IR].op+'\nResultado: '+transfer.value);
+    if(transfer.to==='ALU')Utilities.sleep(650);
   }
 }
 
@@ -142,6 +163,10 @@ function actualizarVista(){
   sh.getDrawings().filter(d=>d.getOnAction()==='mostrarBuses').forEach(d=>d.remove());
   sh.getRange('B4:AL5').clearContent();
   sh.getRange('B25:AX26').breakApart().merge().setBackground(C.fondo).setFontColor('#FFFFFF').setFontSize(12).setWrap(true);
+  sh.getRange('AQ12:AU14').breakApart().merge().setHorizontalAlignment('center').setVerticalAlignment('middle').setWrap(true).setFontSize(10);
+  sh.getRange('AN23:AX24').breakApart().merge().setBackground(C.alu).setFontColor('#17212B').setFontSize(9).setValue('Constante interna: 1 / 0');
+  const drawings=sh.getDrawings(),token=drawings.find(d=>d.getOnAction()==='mostrarTransferencia');
+  if(token)token.setWidth(20).setHeight(20).setZIndex(Math.max(...drawings.map(d=>d.getZIndex()))+1);
   conBloqueo_(props=>{props.deleteProperty(RUN_KEY);pintar_(sesion_(props),null,false);});
 }
 
@@ -217,6 +242,7 @@ function prepararDiagrama(){
     sh.getRange(r.getRow()-1,r.getColumn(),1,r.getNumColumns()).merge().setValue(labels[k]).setFontSize(10);
   });
   text('I17:N19','↓ ↓ ↓ ↓ ↓ ↓\nMicroórdenes',10);text('V37:AB37','Selector',10);text('V38:AB40','Dirección\nseleccionada',10);box('V38:AB40',C.mem);
+  text('AN23:AX24','Constante interna: 1 / 0',9);
   text('AF37:AQ38','Memoria · dirección / contenido',10);
   for(let i=0;i<8;i++){sh.getRange(39+i,32,1,3).merge();sh.getRange(39+i,35,1,9).merge();box('AF'+(39+i)+':AQ'+(39+i),C.mem);}
   ['B27:R28','B30:R33','B35:R37','B39:R48','B50:AX51'].forEach(r=>text(r,'',r==='B27:R28'?14:10,'#FFFFFF'));

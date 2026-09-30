@@ -25,6 +25,8 @@ Los controles también están disponibles en el menú. Los dibujos con función 
 
 Para ADD AX,BX, A se lee desde RAM[80h] hacia AX y B desde RAM[81h] hacia BX. AX pasa a REN1 y BX a REN2. La ALU calcula REN1 + REN2, guarda en AC y actualiza flags. Después AC pasa a AX. Una instrucción STORE posterior escribe AX en RAM[82h]. Cada LOAD, ADD y STORE tiene su propio FETCH, DECODE, EXECUTE y STORE.
 
+En la microoperación de cálculo, la animación muestra primero REN1 → ALU, luego REN2 → ALU y finalmente ALU → AC. NOT omite la segunda entrada. Estos recorridos pertenecen al mismo cálculo; no son instrucciones adicionales. Cada recuadro conserva su valor hasta recibir una escritura. RAM[82h] es memoria simulada dentro de la hoja, no una dirección de la memoria física del ordenador; corresponde a Memoria!E14 (fila 80h, columna 02h).
+
 SUB realiza la resta. CMP usa la misma resta pero no escribe el resultado en AX/BX. INC y DEC usan una constante interna 1; NOT solo necesita REN1 (REN2 se pone en 0 y se ignora). MOV, LOAD, STORE y los saltos no modifican flags.
 
 Los ejemplos del selector guardan AX final en 82h y BX final en 83h. LOAD utiliza 80h como dirección de prueba y STORE utiliza 84h. En JMP/JZ/JNZ se añade CMP AX,BX y se salta sobre MOV AX,EEh: los datos A y B permiten observar ambas condiciones. HLT detiene el programa antes del almacenamiento final.
@@ -168,6 +170,8 @@ El procesador se detiene en el paso **336**, con PC=1Ah, IR=FFh, AX=00h, BX=05h 
 La hoja enlazada incluye las figuras editables y el script vinculado. Para obtener otra instancia completa, crear una copia de esa hoja. Para actualizar su código, pegar Cpu.gs, Ejemplos.gs y Hoja.gs en archivos del proyecto vinculado (o concatenarlos en Código.gs), guardar y recargar la hoja. No duplicar simultáneamente ambas formas de instalación. Los dibujos tienen asignadas las funciones paso, ejecutar, pausar, reiniciar y cargarPrograma. El indicador se identifica con mostrarTransferencia y la figura ALU con mostrarALU.
 
 Pruebas locales desde la raíz del repositorio: **node tests/cpu.test.cjs**. Incluyen 196608 combinaciones de ADD/SUB/CMP, los 42 opcodes, límites de memoria, wrap de PC, HLT, cinco variantes del programa de multiplicación y 126 ejemplos del selector con comprobación de registros, banderas y saltos.
+
+**node tests/animation.test.cjs** comprueba el orden de entrada y salida de la ALU, los datos transportados y la diferencia entre operaciones binarias, NOT y constantes internas de INC/DEC.
 
 ## Gestión
 
